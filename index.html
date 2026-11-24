@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Ceas analogic de șah pentru doi jucători. Apasă Space pentru a schimba tura.">
+<title>Ceas de șah</title>
+<style>
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  color: #242820;
+  background: #f5f2e9;
+  --muted: #565b4e;
+  --line: #dcd8ca;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+button, select { font: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid #b06b32; outline-offset: 4px; }
+main { max-width: 1080px; padding: 34px 36px 24px; margin: auto; }
+header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+h1 { font: 500 clamp(3rem, 7vw, 5.2rem)/.93 Georgia, serif; letter-spacing: -.066em; margin: 0 0 12px; }
+header p, .help { margin: 0; color: var(--muted); }
+.stage {
+  container-type: inline-size;
+  display: grid;
+  justify-items: center;
+  isolation: isolate;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid #233a30;
+  border-radius: 22px;
+  padding: 20px 16px 46px;
+  background: radial-gradient(ellipse at 48% 23%, #2f4d3c, #192e26 65%, #11241d);
+}
+.board {
+  position: absolute;
+  bottom: -124px;
+  width: 180%;
+  height: 234px;
+  z-index: -1;
+  transform: perspective(280px) rotateX(37deg);
+  background: repeating-conic-gradient(#b29a67 0 25%, #53614a 0 50%) 0 0 / 128px 82px;
+  opacity: .26;
+  mask-image: linear-gradient(transparent, black 60%);
+}
+.status {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #ffffff39;
+  border-radius: 30px;
+  padding: 5px 14px;
+  color: #f1ecdb;
+  background: #12251dad;
+  font-size: .875rem;
+  text-align: center;
+}
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e0b87b; flex: none; }
+.stage[data-mode="running"] .status::before { background: #b5db9e; }
+.stage[data-mode="ended"] .status::before { background: #ed8e77; }
+.clock {
+  --bezel: clamp(9px, 2.15cqw, 22px);
+  width: min(660px, 86cqw);
+  margin-top: 54px;
+  position: relative;
+  padding: var(--bezel);
+  border-radius: 13px 13px 9px 9px;
+  background:
+    repeating-linear-gradient(0deg, #79391e22 0 1px, transparent 1px 5px, #ffdc9b28 5px 6px, transparent 6px 11px),
+    linear-gradient(162deg, #f1be7c, #cb9259 37%, #a5643d 83%, #79452d);
+  box-shadow: inset 0 2px 2px #ffdea6, inset 0 -3px 4px #572c1cba, 0 6px 0 #502f23, 0 25px 38px #08100dbc;
+}
+.clock-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(10px, 4cqw, 48px);
+  border-radius: 5px;
+  padding: clamp(10px, 2.4cqw, 24px) clamp(7px, 2.4cqw, 24px) 12px;
+  background:
+    radial-gradient(ellipse at 30% 0, #fff7d366, transparent 75%),
+    repeating-linear-gradient(0deg, #68452516 0 1px, transparent 1px 7px),
+    linear-gradient(#dcb886, #b98556);
+  box-shadow: inset 0 2px 7px #351c13af, 0 1px 1px #f6c890;
+}
+.plunger {
+  --travel: 0px;
+  height: 44px;
+  width: clamp(48px, 11cqw, 88px);
+  position: absolute;
+  top: -44px;
+  left: 25%;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  z-index: 2;
+}
+.plunger.right { left: 75%; }
+.plunger::before, .plunger::after { content: ""; position: absolute; left: 50%; }
+.plunger::before {
+  bottom: 0; width: 25%; height: calc(23px - var(--travel)); transform: translateX(-50%);
+  background: linear-gradient(90deg, #28271e, #dad1aa 45%, #514a32 81%, #2e2d24);
+  transition: height 140ms ease-out;
+}
+.plunger::after {
+  bottom: 23px; width: 88%; height: 14px; transform: translate(-50%, var(--travel));
+  border-radius: 7px 7px 3px 3px;
+  background: repeating-linear-gradient(90deg, #fff1bb29 0 1px, transparent 1px 5px), linear-gradient(#ead6a9, #a58a5e 24%, #645136 78%, #33291d);
+  box-shadow: inset 0 1px 0 #ffedc8, 0 2px 5px #14130cb0;
+  transition: transform 140ms cubic-bezier(.22,.9,.32,1.2);
+}
+.plunger[data-position="down"] { --travel: 17px; }
+.plunger[data-position="neutral"] { --travel: 7px; }
+.plunger:hover::after { filter: brightness(1.16); }
+.player { min-width: 0; text-align: center; }
+.dial {
+  width: 100%;
+  aspect-ratio: 1;
+  position: relative;
+  border-radius: 50%;
+  padding: 5.5%;
+  background: linear-gradient(150deg, #4f493b 1%, #b3aa90 25%, #594d38 49%, #bdb19b 78%, #463b2d);
+  box-shadow: 0 3px 7px #4f321bc7, inset 0 1px 1px #e4d8bd;
+}
+.player[data-active="true"] .dial { box-shadow: 0 0 0 2px #fbe3a5, 0 2px 10px #4f321bba, 0 0 17px #ffe8b372; }
+.face {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 31%, #fff8e4, #efe5cc 70%, #c5ad84);
+  box-shadow: inset 0 0 9px #584628aa, 0 0 1px 1px #443e32;
+  overflow: hidden;
+}
+.face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(144deg, #ffffff6e, #ffffff09 36%, transparent 45%);
+  pointer-events: none;
+}
+.tick, .number { position: absolute; }
+.tick { width: 1px; height: 3%; background: #635647; transform-origin: center; }
+.tick.major { width: 1.5px; height: 4%; background: #30271e; }
+.number { color: #29251d; transform: translate(-50%, -50%); font: 600 clamp(.72rem, 2.8cqw, 1.45rem)/1 Georgia, serif; }
+.dial-name {
+  position: absolute; left: 0; right: 0; top: 65%; margin: 0;
+  color: #69513a; font: italic clamp(.55rem, 1.7cqw, .9rem)/1 Georgia, serif;
+}
+.hand { position: absolute; left: 50%; bottom: 50%; transform-origin: 50% 100%; border-radius: 70% 70% 2px 2px; }
+.minutes { width: 3%; height: 31%; background: #25261e; box-shadow: 1px 1px 2px #3d311b66; }
+.seconds { width: 1%; height: 42%; background: #923e30; }
+.pin { position: absolute; left: 50%; top: 50%; width: 6%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); background: radial-gradient(circle at 31% 32%, #e8bd63, #674322 80%); }
+.flag {
+  position: absolute; z-index: 1; left: 52%; top: 14%; width: 14%; height: 2.5%;
+  transform: rotate(-12deg); transform-origin: 12% 50%;
+  border-radius: 10px; background: #a53a2c; box-shadow: 1px 1px 2px #71362380;
+  transition: transform 260ms ease-in;
+}
+.flag.down { transform: rotate(76deg); }
+.readout {
+  display: inline-block; margin-top: clamp(7px, 1.4cqw, 14px); padding: 2px 9px;
+  border-radius: 5px; color: #f7e7c9; background: #35291f;
+  box-shadow: inset 0 1px 3px #130e08, 0 1px 0 #f8d4a1a0;
+  font: 500 clamp(.85rem, 3.1cqw, 1.5rem)/1.25 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.player[data-active="true"] .readout { color: #fff8df; background: #293b2b; }
+.player[data-expired="true"] .readout { background: #792f26; color: #fff3ed; }
+.player-name { font-size: .875rem; font-weight: 650; margin: 6px 0 0; color: #38291e; }
+.controls {
+  margin-top: 16px; padding: 15px;
+  display: flex; align-items: end; flex-wrap: wrap; gap: 12px;
+  border: 1px solid var(--line); border-radius: 15px; background: #fcfaf4;
+}
+.field { display: grid; gap: 5px; min-width: min(100%, 216px); margin-right: auto; }
+.field label { font-size: .875rem; font-weight: 600; color: var(--muted); }
+.select-wrap { position: relative; }
+.select-wrap::after { content: ""; width: 8px; height: 8px; border: solid #555c4e; border-width: 0 2px 2px 0; transform: rotate(45deg); position: absolute; right: 15px; top: 16px; pointer-events: none; }
+select, .action {
+  min-height: 44px; border-radius: 8px; border: 1px solid #d4d0c2;
+  color: #242820; background: #fdfbf6;
+}
+select { appearance: none; width: 100%; padding: 0 35px 0 12px; }
+select:disabled { opacity: .68; }
+.action { padding: 0 15px; font-weight: 650; }
+.action:hover { background: #ece9dd; }
+.action.primary { background: #294737; border-color: #294737; color: #fffaf0; }
+.action.primary:hover { background: #365b46; }
+.action:disabled { opacity: .55; cursor: default; }
+.help { margin-top: 13px; font-size: .875rem; line-height: 1.7; }
+kbd { padding: 2px 6px; border: 1px solid #d6d2c5; border-radius: 5px; background: #fffdf8; color: #35392c; font-size: .85rem; }
+@media (max-width: 560px) {
+  main { padding: 26px 14px 18px; }
+  header { margin-bottom: 18px; }
+  .stage { padding: 14px 8px 30px; border-radius: 16px; }
+  .clock { width: 96cqw; margin-top: 48px; }
+  .controls { gap: 8px; }
+  .field { width: 100%; }
+  .action { padding-inline: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Ceas de șah</h1>
+      <p>Cronometru pentru doi jucători</p>
+    </div>
+  </header>
+
+  <section class="stage" aria-label="Ceasul de șah" data-mode="ready">
+    <div class="board" aria-hidden="true"></div>
+    <div class="status" role="status" id="status">Gata de joc · White începe</div>
+    <div class="clock">
+      <button type="button" class="plunger" data-position="neutral" aria-label="Buton White"></button>
+      <button type="button" class="plunger right" data-position="neutral" aria-label="Buton Black"></button>
+      <div class="clock-inner" id="clock-inner"></div>
+    </div>
+  </section>
+
+  <div class="controls">
+    <div class="field">
+      <label for="preset">Timp per jucător</label>
+      <div class="select-wrap">
+        <select id="preset">
+          <option value="1+0">1 min</option>
+          <option value="3+0">3 min</option>
+          <option value="3+2">3 min + 2 sec/mutare</option>
+          <option value="5+0" selected>5 min</option>
+          <option value="5+3">5 min + 3 sec/mutare</option>
+          <option value="10+0">10 min</option>
+          <option value="15+10">15 min + 10 sec/mutare</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="white-side">Poziția lui White</label>
+      <div class="select-wrap">
+        <select id="white-side">
+          <option value="0" selected>Stânga</option>
+          <option value="1">Dreapta</option>
+        </select>
+      </div>
+    </div>
+    <button class="action" id="sound" aria-pressed="true">Sunet pornit</button>
+    <button class="action" id="reset">Resetează</button>
+    <button class="action primary" id="play">Pornește</button>
+  </div>
+  <p class="help"><kbd>Space</kbd> pornește ceasul sau schimbă tura. Poți apăsa și butonul ridicat de pe carcasă.</p>
+</main>
+
+<template id="player-template">
+  <div class="player">
+    <div class="dial" aria-hidden="true">
+      <div class="face">
+        <span class="dial-name">Șah</span>
+        <span class="flag"></span>
+        <span class="hand minutes"></span>
+        <span class="hand seconds"></span>
+        <span class="pin"></span>
+      </div>
+    </div>
+    <span class="readout" role="timer"></span>
+    <p class="player-name"></p>
+  </div>
+</template>
+
+<script>
+const stage = document.querySelector('.stage');
+const status = document.querySelector('#status');
+const preset = document.querySelector('#preset');
+const whiteSide = document.querySelector('#white-side');
+const play = document.querySelector('#play');
+const sound = document.querySelector('#sound');
+const plungers = [...document.querySelectorAll('.plunger')];
+function buildDial() {
+  const player = document.querySelector('#player-template').content.firstElementChild.cloneNode(true);
+  const face = player.querySelector('.face');
+  const markings = document.createDocumentFragment();
+  for (let i = 0; i < 60; i++) {
+    const angle = i * Math.PI / 30;
+    const major = i % 5 === 0;
+    const tick = document.createElement('span');
+    tick.className = major ? 'tick major' : 'tick';
+    tick.style.left = `${50 + 45 * Math.sin(angle)}%`;
+    tick.style.top = `${50 - 45 * Math.cos(angle)}%`;
+    tick.style.transform = `translate(-50%, -50%) rotate(${i * 6}deg)`;
+    markings.append(tick);
+
+    if (major) {
+      const number = document.createElement('span');
+      number.className = 'number';
+      number.style.left = `${50 + 34 * Math.sin(angle)}%`;
+      number.style.top = `${50 - 34 * Math.cos(angle)}%`;
+      number.textContent = i ? i / 5 : 12;
+      markings.append(number);
+    }
+  }
+  face.prepend(markings);
+  document.querySelector('#clock-inner').append(player);
+  return {
+    player,
+    nameLabel: player.querySelector('.player-name'),
+    readout: player.querySelector('.readout'),
+    minutes: face.querySelector('.minutes'),
+    seconds: face.querySelector('.seconds'),
+    flag: face.querySelector('.flag')
+  };
+}
+
+const dials = plungers.map(buildDial);
+
+// The stored times belong to the last completed action.
+// The active player's display subtracts elapsed monotonic time from that snapshot.
+let remaining, increment, mode, active, startedAt, playerNames;
+let frame = null;
+let audio;
+
+function currentTime(side, now) {
+  const elapsed = mode === 'running' && side === active ? now - startedAt : 0;
+  return Math.max(0, remaining[side] - elapsed);
+}
+
+function formatTime(ms) {
+  const total = Math.ceil(ms / 1000);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function draw(now) {
+  dials.forEach((dial, side) => {
+    const ms = currentTime(side, now);
+    const time = formatTime(ms);
+    if (dial.readout.textContent !== time) dial.readout.textContent = time;
+    dial.minutes.style.transform = `translateX(-50%) rotate(${ms / 10000}deg)`;
+    dial.seconds.style.transform = `translateX(-50%) rotate(${ms * .006}deg)`;
+  });
+}
+
+function syncControls() {
+  stage.dataset.mode = mode;
+  status.textContent = {
+    ready: 'Gata de joc · White începe',
+    running: `${playerNames[active]} este la mutare`,
+    paused: `Pauză · ${playerNames[active]} este la mutare`,
+    ended: `${playerNames[active]} a rămas fără timp`
+  }[mode];
+  play.textContent = { ready: 'Pornește', running: 'Pauză', paused: 'Continuă', ended: 'Timp expirat' }[mode];
+  play.disabled = mode === 'ended';
+  preset.disabled = mode === 'running' || mode === 'paused';
+  whiteSide.disabled = preset.disabled;
+  plungers.forEach((button, side) => {
+    button.dataset.position = mode === 'ready' ? 'neutral' : side === active ? 'up' : 'down';
+    dials[side].player.dataset.active = mode === 'running' && side === active;
+    dials[side].player.dataset.expired = mode === 'ended' && side === active;
+    dials[side].flag.classList.toggle('down', mode === 'ended' && side === active);
+  });
+}
+
+function stopFrame() {
+  if (frame !== null) cancelAnimationFrame(frame);
+  frame = null;
+}
+
+function clickSound() {
+  if (sound.getAttribute('aria-pressed') !== 'true' || !window.AudioContext) return;
+  try {
+    audio ??= new AudioContext();
+    if (audio.state === 'suspended') audio.resume().catch(() => {});
+    const at = audio.currentTime;
+    const oscillator = audio.createOscillator();
+    const volume = audio.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(520, at);
+    oscillator.frequency.exponentialRampToValueAtTime(105, at + .043);
+    volume.gain.setValueAtTime(.13, at);
+    volume.gain.exponentialRampToValueAtTime(.001, at + .057);
+    oscillator.connect(volume).connect(audio.destination);
+    oscillator.start(at);
+    oscillator.stop(at + .06);
+  } catch {
+    // The clock still works on devices that block audio.
+  }
+}
+
+function expire(now) {
+  remaining[active] = 0;
+  mode = 'ended';
+  stopFrame();
+  syncControls();
+  draw(now);
+}
+
+function tick() {
+  frame = null;
+  const now = performance.now();
+  if (currentTime(active, now) === 0) {
+    expire(now);
+    return;
+  }
+  draw(now);
+  frame = requestAnimationFrame(tick);
+}
+
+function start(now) {
+  startedAt = now;
+  mode = 'running';
+  clickSound();
+  syncControls();
+  draw(now);
+  frame = requestAnimationFrame(tick);
+}
+
+function pressClock(side) {
+  const now = performance.now();
+  if (mode === 'ready' || mode === 'paused') {
+    start(now);
+    return;
+  }
+  if (mode !== 'running' || side !== active) return;
+  const left = currentTime(active, now);
+  if (left === 0) {
+    expire(now);
+    return;
+  }
+  remaining[active] = left + increment;
+  active = 1 - active;
+  startedAt = now;
+  clickSound();
+  syncControls();
+  draw(now);
+}
+
+function reset() {
+  stopFrame();
+  const [minutes, seconds] = preset.value.split('+').map(Number);
+  remaining = [minutes * 60000, minutes * 60000];
+  increment = seconds * 1000;
+  mode = 'ready';
+  active = Number(whiteSide.value);
+  playerNames = active === 0 ? ['White', 'Black'] : ['Black', 'White'];
+  dials.forEach((dial, side) => {
+    const name = playerNames[side];
+    dial.nameLabel.textContent = name;
+    dial.readout.setAttribute('aria-label', `Timp rămas — ${name}`);
+    plungers[side].setAttribute('aria-label', `Buton ${name}`);
+  });
+  startedAt = 0;
+  syncControls();
+  draw(0);
+}
+
+play.addEventListener('click', () => {
+  const now = performance.now();
+  if (mode === 'ready' || mode === 'paused') {
+    start(now);
+    return;
+  }
+  if (mode !== 'running') return;
+  remaining[active] = currentTime(active, now);
+  if (remaining[active] === 0) {
+    expire(now);
+    return;
+  }
+  mode = 'paused';
+  stopFrame();
+  syncControls();
+  draw(now);
+});
+plungers.forEach((button, side) => button.addEventListener('click', () => pressClock(side)));
+document.querySelector('#reset').addEventListener('click', reset);
+[preset, whiteSide].forEach(select => {
+  let usedWithPointer = false;
+  select.addEventListener('pointerdown', () => { usedWithPointer = true; });
+  select.addEventListener('keydown', () => { usedWithPointer = false; });
+  select.addEventListener('change', () => {
+    reset();
+    if (usedWithPointer) select.blur();
+  });
+});
+document.addEventListener('click', event => {
+  if (event.detail > 0) event.target.closest('button')?.blur();
+});
+sound.addEventListener('click', () => {
+  const enabled = sound.getAttribute('aria-pressed') !== 'true';
+  sound.setAttribute('aria-pressed', String(enabled));
+  sound.textContent = enabled ? 'Sunet pornit' : 'Sunet oprit';
+  if (enabled) clickSound();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.code !== 'Space' || event.altKey || event.ctrlKey || event.metaKey) return;
+  const target = event.target;
+  if (target.closest('select, input, textarea, [contenteditable]')) return;
+  if (target.matches('button:focus-visible') && !event.repeat) return;
+  event.preventDefault();
+  if (!event.repeat) pressClock(active);
+});
+
+reset();
+</script>
+</body>
+</html>
